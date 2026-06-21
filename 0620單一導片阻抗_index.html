@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>複合導片阻抗分析與設計平台</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            950: '#0b1329',
+                            900: '#1c2541',
+                            800: '#3a506b',
+                            700: '#5bc0be',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 載入微光動畫 */
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 2px rgba(52, 211, 153, 0.4)); }
+            50% { opacity: 1; filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.8)); }
+        }
+        .glowing-path {
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+        /* 美化滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b1329;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3a506b;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5bc0be;
+        }
+    </style>
+    <!-- LaTeX 數學公式渲染 -->
+    <script type="text/javascript" id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased selection:bg-teal-500 selection:text-slate-950">
+
+    <!-- 頁首 Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-gradient-to-tr from-teal-500 to-emerald-400 p-2.5 rounded-xl shadow-lg shadow-teal-500/20">
+                    <i data-lucide="cpu" class="w-6 h-6 text-slate-950"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-teal-300 via-emerald-400 to-emerald-200 bg-clip-text text-transparent">
+                        複合導片阻抗分析系統
+                    </h1>
+                    <p class="text-xs text-slate-400">Composite Conductor Tab Impedance Solver & Analyzer</p>
+                </div>
+            </div>
+
+            <!-- API Key 設定區 -->
+            <div class="flex items-center space-x-2 bg-slate-950/60 p-1.5 px-3 rounded-xl border border-slate-800 w-full sm:w-auto max-w-sm">
+                <i data-lucide="key" class="w-4 h-4 text-slate-400 shrink-0"></i>
+                <input type="password" id="apiKeyInput" 
+                       placeholder="輸入 Gemini API Key (可選)" 
+                       class="bg-transparent text-xs text-slate-200 focus:outline-none w-full placeholder:text-slate-500" />
+                <button onclick="toggleApiKeyVisibility()" class="text-slate-400 hover:text-slate-200 transition-colors p-1" title="顯示/隱藏">
+                    <i data-lucide="eye" id="eyeIcon" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 全域錯誤/提示對話框 (代替 Browser Alert) -->
+    <div id="toastNotification" class="fixed top-20 right-4 z-50 transform translate-x-full transition-transform duration-300 ease-out hidden">
+        <div class="bg-slate-900 border border-teal-500 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 max-w-md">
+            <span id="toastIconContainer" class="p-1 rounded-lg bg-teal-500/10 text-teal-400">
+                <i data-lucide="info" class="w-5 h-5" id="toastIcon"></i>
+            </span>
+            <div>
+                <p id="toastMessage" class="text-xs font-semibold leading-relaxed"></p>
+            </div>
+            <button onclick="hideToast()" class="text-slate-400 hover:text-slate-200">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 主要內容區 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左側配置欄：規格與圖像輸入 (占 4 格) -->
+        <section class="lg:col-span-4 space-y-6 flex flex-col">
+            
+            <!-- 參數規格卡片 -->
+            <div class="bg-slate-900/60 rounded-2xl p-5 border border-slate-800/80 shadow-xl backdrop-blur">
+                <div class="flex items-center space-x-2.5 mb-5 border-b border-slate-800 pb-3">
+                    <span class="text-teal-400 p-1.5 bg-teal-500/10 rounded-lg">
+                        <i data-lucide="sliders" class="w-4 h-4"></i>
+                    </span>
+                    <h2 class="text-base font-semibold">1. 實體規格配置</h2>
+                </div>
+
+                <!-- 欄位 1: 圖像輸入 (fig01) -->
+                <div class="mb-5">
+                    <label class="block text-xs font-medium text-slate-300 mb-2 flex justify-between">
+                        <span>圖面 fig01 (與電芯連接的導片)</span>
+                        <span class="text-teal-400 text-[10px] uppercase font-bold tracking-wider">必須</span>
+                    </label>
+                    <div id="dropZone" 
+                         class="border-2 border-dashed border-slate-700 hover:border-teal-500/80 bg-slate-950/50 hover:bg-slate-950/80 rounded-xl p-6 text-center cursor-pointer transition-all group relative overflow-hidden flex flex-col items-center justify-center min-h-[140px]">
+                        <input type="file" id="fileInput" class="hidden" accept="image/*" />
+                        <div id="uploadPlaceholder" class="space-y-2">
+                            <i data-lucide="image-plus" class="w-8 h-8 mx-auto text-slate-500 group-hover:text-teal-400 group-hover:scale-110 transition-all"></i>
+                            <p class="text-xs text-slate-400">
+                                點擊、拖拽圖片或直接 <span class="text-teal-400 font-semibold underline">Ctrl+V 貼上</span>
+                            </p>
+                            <p class="text-[10px] text-slate-500">支援 PNG, JPG, BMP 格式</p>
+                        </div>
+                        <img id="imagePreview" class="hidden max-h-[160px] object-contain rounded-lg shadow-md z-10" alt="fig01 導片原始圖" />
+                        <button id="removeImgBtn" onclick="removeImage(event)" class="absolute top-2 right-2 bg-rose-500/90 text-white p-1 rounded-full hover:bg-rose-600 transition-all shadow hidden z-20">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 欄位 2: 垂直最高與水平最寬尺寸 -->
+                <div class="mb-5 space-y-4">
+                    <label class="block text-xs font-medium text-slate-300 mb-1 flex items-center space-x-1">
+                        <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-teal-400"></i>
+                        <span>導片幾何包絡尺寸</span>
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800 focus-within:border-teal-500/50 transition-colors">
+                            <span class="text-[10px] text-slate-400 block mb-1">水平最寬尺寸 (W)</span>
+                            <div class="flex items-center">
+                                <input type="number" id="maxWidthInput" value="50" step="0.1" min="1"
+                                       class="bg-transparent text-sm font-semibold w-full text-slate-100 focus:outline-none" />
+                                <span class="text-xs text-slate-500 ml-1">mm</span>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800 focus-within:border-teal-500/50 transition-colors">
+                            <span class="text-[10px] text-slate-400 block mb-1">垂直最高尺寸 (H)</span>
+                            <div class="flex items-center">
+                                <input type="number" id="maxHeightInput" value="30" step="0.1" min="1"
+                                       class="bg-transparent text-sm font-semibold w-full text-slate-100 focus:outline-none" />
+                                <span class="text-xs text-slate-500 ml-1">mm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 欄位 3: 材料與厚度 -->
+                <div class="space-y-4">
+                    <label class="block text-xs font-medium text-slate-300 mb-1 flex items-center space-x-1">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 text-teal-400"></i>
+                        <span>材料物理特性</span>
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800 focus-within:border-teal-500/50 transition-colors">
+                            <span class="text-[10px] text-slate-400 block mb-1">導片材料選擇</span>
+                            <select id="materialSelect" onchange="handleMaterialChange()"
+                                    class="bg-transparent text-xs font-semibold w-full text-slate-100 focus:outline-none border-0 p-0 cursor-pointer">
+                                <option value="Cu1100" class="bg-slate-900">Cu 1100 (純銅)</option>
+                                <option value="NB109" class="bg-slate-900">NB109 (鎳基合金)</option>
+                                <option value="DSC3N" class="bg-slate-900">DSC3N (彌散銅)</option>
+                                <option value="Al1050" class="bg-slate-900">Al 1050 (鋁合金)</option>
+                                <option value="custom" class="bg-slate-900">Custom (自訂阻抗率)</option>
+                            </select>
+                        </div>
+                        <div class="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800 focus-within:border-teal-500/50 transition-colors">
+                            <span class="text-[10px] text-slate-400 block mb-1">導片厚度 (T)</span>
+                            <div class="flex items-center">
+                                <input type="number" id="thicknessInput" value="0.2" step="0.01" min="0.01"
+                                       class="bg-transparent text-sm font-semibold w-full text-slate-100 focus:outline-none" />
+                                <span class="text-xs text-slate-500 ml-1">mm</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 自訂阻抗率區塊 -->
+                    <div id="customResistivityContainer" class="hidden animate-fadeIn bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                        <span class="text-[10px] text-slate-400 block mb-1">自定義體積阻抗率 ($\rho$)</span>
+                        <div class="flex items-center">
+                            <input type="number" id="customResistivity" value="1.72" step="0.01"
+                                   class="bg-transparent text-xs font-mono font-semibold w-full text-slate-100 focus:outline-none" />
+                            <span class="text-xs text-slate-500 ml-2">$\times 10^{-8} \, \Omega \cdot \text{m}$</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 點擊觸發分析按鈕 -->
+                <button id="analyzeBtn" onclick="runAnalysis()"
+                        class="w-full mt-6 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-slate-950 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-teal-500/10 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center space-x-2">
+                    <i data-lucide="zap" class="w-5 h-5"></i>
+                    <span>開始複合導片阻抗分析</span>
+                </button>
+            </div>
+
+            <!-- 分析步驟提示 -->
+            <div class="bg-slate-900/40 rounded-2xl p-4 border border-slate-800/50 flex-1 flex flex-col justify-between">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">阻抗分析執行流程</h3>
+                <div class="space-y-3 text-xs text-slate-300 flex-1">
+                    <div class="flex items-start space-x-2.5">
+                        <div class="bg-teal-500/20 text-teal-300 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">1</div>
+                        <p>分析 <b>fig01</b> 圖像非白色區，轉換為高對比紅色遮罩零件 <b>part01</b> (<b>fig02</b>)。</p>
+                    </div>
+                    <div class="flex items-start space-x-2.5">
+                        <div class="bg-teal-500/20 text-teal-300 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">2</div>
+                        <p>透過邊界探測，高精度計算 <b>part01</b> 的物理導電面積。</p>
+                    </div>
+                    <div class="flex items-start space-x-2.5">
+                        <div class="bg-teal-500/20 text-teal-300 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">3</div>
+                        <p><b>中軸線尋路</b>：結合距離變換，規劃出完全位於導體截面正中間的最短流路 (<b>fig08</b>)。</p>
+                    </div>
+                    <div class="flex items-start space-x-2.5">
+                        <div class="bg-teal-500/20 text-teal-300 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">4</div>
+                        <p><b>有效截寬飽和</b>：局部量測之流路有效寬度**限制最大為 12mm**，進行變截面阻抗串聯積分。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側主工作區：圖像與數據可視化 (占 8 格) -->
+        <section class="lg:col-span-8 space-y-6">
+            
+            <!-- 預載入/提示未載入畫面 -->
+            <div id="welcomePanel" class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-12 text-center flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                <div class="w-16 h-16 bg-slate-950/80 rounded-full flex items-center justify-center border border-slate-800 shadow-inner">
+                    <i data-lucide="activity" class="w-8 h-8 text-slate-500 animate-pulse"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-300">等待載入導電片圖面</h3>
+                <p class="text-sm text-slate-400 max-w-md mx-auto">
+                    請在左側欄位貼上或上傳導片零件的 2D 輪廓設計圖面 (fig01)，並設定寬、高以及材質屬性。接著點擊分析按鈕開始阻抗演算。
+                </p>
+            </div>
+
+            <!-- 分析處理遮罩/進度條 -->
+            <div id="loadingPanel" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 rounded-full border-4 border-teal-500/10 border-t-teal-500 animate-spin"></div>
+                </div>
+                <h3 class="text-lg font-semibold text-teal-400" id="loadingStatus">正在解析圖像幾何細節...</h3>
+                <p class="text-xs text-slate-400 max-w-xs" id="loadingSubstatus">正在讀取非白色像素，生成 part01 紅色導電元件...</p>
+            </div>
+
+            <!-- 結果與互動視窗 (主介面) -->
+            <div id="resultsWorkspace" class="hidden space-y-6">
+                
+                <!-- 第一階段：fig02 & part01 幾何分析報告 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- 圖像二值化轉換與特徵圖 (fig02 / part01) -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded">fig02 / part01 (提取導體零件)</span>
+                            <span id="pixelRatioText" class="text-[10px] text-slate-400"></span>
+                        </div>
+                        <div class="bg-slate-950 rounded-xl overflow-hidden p-4 flex items-center justify-center border border-slate-850 h-[240px] relative">
+                            <!-- Canvas 繪製 fig02 -->
+                            <canvas id="canvasFig02" class="max-w-full max-h-full object-contain"></canvas>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-2 text-center">所有非白色（背景）區域皆已高亮為導電紅色部分</p>
+                    </div>
+
+                    <!-- 幾何尺寸特徵報告 (fig03) -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center space-x-2 mb-3">
+                                <span class="text-teal-400"><i data-lucide="binary" class="w-4 h-4"></i></span>
+                                <h3 class="text-sm font-semibold">幾何資訊特徵數據 (fig03)</h3>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 mb-4">
+                                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-850">
+                                    <span class="text-[10px] text-slate-400 block">包絡網格寬高</span>
+                                    <span id="metricBounding" class="text-sm font-bold text-slate-200">-- mm × -- mm</span>
+                                </div>
+                                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-850">
+                                    <span class="text-[10px] text-slate-400 block">物理導電面積</span>
+                                    <span id="metricArea" class="text-sm font-bold text-emerald-400">-- mm²</span>
+                                </div>
+                            </div>
+                            <div class="space-y-2 text-xs text-slate-300">
+                                <div class="p-2.5 rounded bg-slate-950/40 border border-slate-800/60">
+                                    <span class="font-bold text-teal-400">幾何中軸優化引擎已就緒：</span>
+                                    <p id="aiGeometryReport" class="mt-1 text-slate-300 leading-relaxed text-[11px]">
+                                        導片邊界正常加載，尋路系統會強制流路行走在寬度的中軸線上，防止貼邊隔空行駛。
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 text-right mt-3">元件命名：part01</div>
+                    </div>
+                </div>
+
+                <!-- 第二階段：互動標記正負極 (fig08) -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                    <div class="flex flex-wrap justify-between items-center border-b border-slate-800 pb-4 mb-4 gap-4">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="bg-indigo-500/20 text-indigo-400 p-1.5 rounded-lg">
+                                <i data-lucide="mouse-pointer-click" class="w-4 h-4"></i>
+                            </span>
+                            <div>
+                                <h3 class="text-sm font-bold">電芯焊接端點互動標記 (fig08)</h3>
+                                <p class="text-[11px] text-slate-400">請在下方導片上標示多個正極焊點（+1, +2...）與負極焊點（-1, -2...）</p>
+                            </div>
+                        </div>
+
+                        <!-- 編輯工具列 -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <!-- 正極/負極切換 -->
+                            <div class="bg-slate-950/80 p-1 rounded-xl border border-slate-800 flex space-x-1 text-xs">
+                                <button onclick="setPinType('positive')" id="btnPinPositive"
+                                        class="px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                    <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                    <span>正極 (+)</span>
+                                </button>
+                                <button onclick="setPinType('negative')" id="btnPinNegative"
+                                        class="px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 text-slate-400 hover:text-slate-200">
+                                    <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+                                    <span>負極 (-)</span>
+                                </button>
+                            </div>
+
+                            <!-- 回到上一步 -->
+                            <button onclick="undoLastPin()" class="bg-slate-850 hover:bg-slate-800 text-slate-200 text-xs px-3 py-1.5 rounded-xl border border-slate-700 transition-colors flex items-center space-x-1">
+                                <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+                                <span>回到上一步</span>
+                            </button>
+
+                            <!-- 完成按鈕 -->
+                            <button onclick="completeLabeling()" class="bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 text-xs font-bold px-4 py-1.5 rounded-xl shadow-md shadow-teal-500/10 transition-colors flex items-center space-x-1 hover:brightness-110">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                <span>完成端點標定</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <!-- 標記主畫布 -->
+                        <div class="lg:col-span-8 flex flex-col items-center">
+                            <div class="relative bg-slate-950 rounded-xl overflow-hidden p-2 border border-slate-800 w-full flex items-center justify-center cursor-crosshair min-h-[300px]">
+                                <!-- 用於互動的 Canvas -->
+                                <canvas id="canvasFig08" class="max-w-full max-h-full object-contain" onclick="handleCanvasClick(event)"></canvas>
+                                <!-- 水印 -->
+                                <div class="absolute bottom-2 left-2 bg-slate-900/80 px-2 py-0.5 rounded text-[9px] text-slate-500 font-mono">fig08 editor</div>
+                            </div>
+                        </div>
+
+                        <!-- 端點清單與狀態 -->
+                        <div class="lg:col-span-4 space-y-4">
+                            <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-850/80 h-[190px] overflow-y-auto">
+                                <h4 class="text-xs font-bold text-slate-400 mb-2 flex justify-between">
+                                    <span>已標註端點</span>
+                                    <span id="pinCountBadge" class="text-[10px] text-teal-400">0 個端點</span>
+                                </h4>
+                                <ul id="pinList" class="space-y-1.5 text-xs">
+                                    <li class="text-slate-500 italic text-center py-6">尚未點擊標定任何端點</li>
+                                </ul>
+                            </div>
+                            <div class="bg-teal-500/5 rounded-xl border border-teal-500/20 p-3.5 text-[11px] leading-relaxed text-teal-300">
+                                <span class="font-bold flex items-center mb-1 text-xs">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mr-1 text-teal-400 shrink-0"></i>
+                                    標記指南
+                                </span>
+                                點擊上圖可在該處精準落點。完成後點擊「完成端點標定」即可生成**中軸線走電路徑**並進行阻抗計算。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三階段：走電路徑阻抗 analysis 報告 -->
+                <div id="impedanceReportSection" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-6">
+                    <div class="border-b border-slate-800 pb-4">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg">
+                                <i data-lucide="route" class="w-4 h-4"></i>
+                            </span>
+                            <div>
+                                <h3 class="text-sm font-bold">走電路徑與分段變寬度等效阻抗分析</h3>
+                                <p class="text-[11px] text-slate-400">
+                                    採用 **A* 中軸最短路徑演算法**（保持在截面中間），並將有效走電寬度限制於最大 **12mm**
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 計算公示說明 (LaTeX-style) -->
+                    <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-850 flex flex-wrap gap-6 items-center justify-around">
+                        <div class="text-center">
+                            <p class="text-[10px] text-slate-400 mb-1">中軸線分段變寬度阻抗積分公式</p>
+                            <p class="text-sm font-mono text-teal-300">$$R_i = \sum_{k=1}^{M} \rho \cdot \frac{\Delta L_k}{W_k \cdot t}$$</p>
+                        </div>
+                        <div class="text-center bg-teal-500/5 border border-teal-500/10 p-2.5 rounded-xl">
+                            <p class="text-[10px] text-teal-400 mb-1 font-bold">有效截面寬度上限約束</p>
+                            <p class="text-xs font-mono text-teal-300">$$W_k = \min(W_{\text{actual}}, 12\,\text{mm})$$</p>
+                        </div>
+                    </div>
+
+                    <!-- 走電路徑可視化清單 (每條走電路徑用圖片顯示出來) -->
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-300 mb-3 flex items-center space-x-1">
+                            <i data-lucide="eye" class="w-3.5 h-3.5 text-teal-400"></i>
+                            <span>中軸走電與有效包絡寬度動態視覺圖</span>
+                        </h4>
+                        <div id="pathVisualizerContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <!-- JavaScript 將動態生成每條路徑的迷你 Canvas -->
+                        </div>
+                    </div>
+
+                    <!-- 阻抗 analysis 報表與總阻抗結果 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        
+                        <!-- 數據表格 -->
+                        <div class="lg:col-span-8 bg-slate-950/40 rounded-xl border border-slate-850 overflow-hidden">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-950 border-b border-slate-850 text-slate-400 uppercase tracking-wider text-[10px]">
+                                        <th class="p-3">路徑編號</th>
+                                        <th class="p-3">中軸長度 (L)</th>
+                                        <th class="p-3">實測均寬 (Avg W)</th>
+                                        <th class="p-3 text-amber-400">有效電導寬度 (Max 12mm)</th>
+                                        <th class="p-3 text-right">變截面積分電阻 ($R_i$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="impedanceTableBody" class="divide-y divide-slate-900 text-slate-300">
+                                    <!-- 動態生成數據列 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 最終阻抗總結卡片 -->
+                        <div class="lg:col-span-4 bg-gradient-to-br from-slate-900 to-slate-950 border border-teal-500/30 rounded-xl p-5 flex flex-col justify-between relative overflow-hidden shadow-xl shadow-teal-500/5">
+                            <!-- 裝飾背景發光 -->
+                            <div class="absolute -top-12 -right-12 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl"></div>
+                            
+                            <div>
+                                <span class="text-[10px] uppercase font-bold text-teal-400 tracking-widest bg-teal-500/10 px-2 py-0.5 rounded-full">Final Equivalent Impedance</span>
+                                <h4 class="text-xs text-slate-400 mt-2">複合導片等效總阻抗</h4>
+                                <div class="mt-2 flex items-baseline">
+                                    <span id="totalImpedanceValue" class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-emerald-400">0.0000</span>
+                                    <span class="text-lg font-bold text-teal-300 ml-1.5">m$\Omega$</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-3 leading-relaxed">
+                                    *此阻抗基於 **A* 中軸最短尋路** 與 **有效截面寬度 12mm 飽和上限**。剔除了大電流無法均勻覆蓋的過寬導電區域，並精準沿著材料幾何中間前行，計算結果極符合真實電化學工程情況。
+                                </p>
+                            </div>
+
+                            <div class="border-t border-slate-800/80 pt-4 mt-4">
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-500">分析引擎</span>
+                                    <span id="engineBadge" class="font-bold text-slate-400">中軸尋路物理積分引擎</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI 建議面板 -->
+                    <div id="aiOptimizationCard" class="hidden bg-emerald-500/5 rounded-xl border border-emerald-500/20 p-4 space-y-2">
+                        <div class="flex items-center space-x-1.5 text-emerald-400">
+                            <i data-lucide="sparkles" class="w-4.5 h-4.5 text-emerald-300"></i>
+                            <span class="text-xs font-bold">Gemini AI 電極流道阻抗優化與瓶頸診斷</span>
+                        </div>
+                        <p id="aiImpedanceAdvise" class="text-xs text-slate-300 leading-relaxed">
+                            正在獲取專家的深入分析...
+                        </p>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- 頁尾 Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950 text-center py-4 text-[10px] text-slate-500">
+        <p>© 2026 電芯連接系統設計研究院. 所有技術參數公式皆遵循 IACS 標準。 複合導體幾何物理仿真平台。</p>
+    </footer>
+
+    <!-- 全域 JavaScript -->
+    <script>
+        // 初始化 Lucide 圖標
+        lucide.createIcons();
+
+        // 核心狀態管理
+        let fig01_img = null;             // 原始上傳圖片
+        let fig02_data = null;            // 轉換後的紅色遮罩幾何數據
+        let boundingBox = null;           // 邊界包絡 pixel
+        let physicalDims = { w: 0, h: 0 };// 水平寬與垂直高 mm
+        let partArea = 0;                 // 零件面積 mm2
+        let currentPinType = 'positive';  // 'positive' or 'negative'
+        let pins = [];                    // 標註的正負極點資訊 {id, type, index, x, y, x_mm, y_mm}
+        let positiveCounter = 0;          // 正極編號計數器
+        let negativeCounter = 0;          // 負極編號計數器
+        let conductiveGrid = null;        // 二值化網格，用於尋路 0:空氣/鏤空, 1:導體材料
+        let distanceToEdge = null;        // 每個網格點到最近空氣邊界的距離，用於中軸尋路懲罰
+        let gridScale = 6;                // 縮小尋徑比例，提高中軸對齊精度
+        let gridCols = 0;
+        let gridRows = 0;
+
+        // 材料電學常數：體積阻抗率 (Ohm * m)
+        const RESISTIVITIES = {
+            Cu1100: 1.72e-8,
+            NB109: 7.20e-8,
+            DSC3N: 2.10e-8,
+            Al1050: 2.82e-8
+        };
+
+        // UI 提示對話框函數 (代替傳統 Alert)
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toastNotification');
+            const msgEl = document.getElementById('toastMessage');
+            const iconContainer = document.getElementById('toastIconContainer');
+            
+            msgEl.innerText = message;
+            if (isError) {
+                iconContainer.className = "p-1 rounded-lg bg-rose-500/10 text-rose-400";
+                toast.classList.add('border-rose-500');
+                toast.classList.remove('border-teal-500');
+            } else {
+                iconContainer.className = "p-1 rounded-lg bg-teal-500/10 text-teal-400";
+                toast.classList.add('border-teal-500');
+                toast.classList.remove('border-rose-500');
+            }
+
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.remove('translate-x-full');
+            }, 10);
+
+            // 5秒後自動關閉
+            setTimeout(hideToast, 5000);
+        }
+
+        function hideToast() {
+            const toast = document.getElementById('toastNotification');
+            toast.classList.add('translate-x-full');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 300);
+        }
+
+        // 1. 初始化與事件監聽
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const removeImgBtn = document.getElementById('removeImgBtn');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+
+        // Drag & Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-teal-500', 'bg-slate-950/80');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-teal-500', 'bg-slate-950/80');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-teal-500', 'bg-slate-950/80');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleFile(file);
+            }
+        });
+
+        // Paste support
+        window.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    handleFile(blob);
+                }
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                fig01_img = new Image();
+                fig01_img.onload = function() {
+                    imagePreview.src = event.target.result;
+                    imagePreview.classList.remove('hidden');
+                    removeImgBtn.classList.remove('hidden');
+                    uploadPlaceholder.classList.add('hidden');
+                    
+                    // 重置分析工作區
+                    document.getElementById('welcomePanel').classList.remove('hidden');
+                    document.getElementById('resultsWorkspace').classList.add('hidden');
+                    document.getElementById('impedanceReportSection').classList.add('hidden');
+                    pins = [];
+                    positiveCounter = 0;
+                    negativeCounter = 0;
+                };
+                fig01_img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeImage(e) {
+            e.stopPropagation();
+            fileInput.value = '';
+            fig01_img = null;
+            imagePreview.src = '';
+            imagePreview.classList.add('hidden');
+            removeImgBtn.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            document.getElementById('welcomePanel').classList.remove('hidden');
+            document.getElementById('resultsWorkspace').classList.add('hidden');
+            document.getElementById('impedanceReportSection').classList.add('hidden');
+            pins = [];
+            positiveCounter = 0;
+            negativeCounter = 0;
+        }
+
+        function handleMaterialChange() {
+            const mat = document.getElementById('materialSelect').value;
+            const container = document.getElementById('customResistivityContainer');
+            if (mat === 'custom') {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('apiKeyInput');
+            const icon = document.getElementById('eyeIcon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                input.type = 'password';
+                icon.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        // 獲取目前選定的材料阻抗率 (Ohm * m)
+        function getResistivity() {
+            const mat = document.getElementById('materialSelect').value;
+            if (mat === 'custom') {
+                const customVal = parseFloat(document.getElementById('customResistivity').value);
+                return (isNaN(customVal) ? 1.72 : customVal) * 1e-8;
+            }
+            return RESISTIVITIES[mat] || 1.72e-8;
+        }
+
+        // 具有智慧多模型自動備援機制的重試 API 呼叫方法
+        async function callGeminiWithRetry(prompt, base64Image = null, maxRetries = 5) {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) throw new Error("尚未輸入 API Key");
+
+            const modelsToTry = [
+                'gemini-2.5-flash-preview-09-2025',
+                'gemini-2.5-flash',
+                'gemini-1.5-flash'
+            ];
+
+            let lastError = null;
+
+            for (const modelName of modelsToTry) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                
+                let payload = {
+                    contents: []
+                };
+
+                let parts = [{ text: prompt }];
+                if (base64Image) {
+                    parts.push({
+                        inlineData: {
+                            mimeType: "image/png",
+                            data: base64Image
+                        }
+                    });
+                }
+
+                payload.contents.push({ parts: parts });
+
+                if (prompt.includes("JSON")) {
+                    payload.generationConfig = {
+                        responseMimeType: "application/json"
+                    };
+                }
+
+                let delay = 1000;
+                let modelSucceeded = false;
+                let modelResponseText = null;
+
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (text) {
+                                modelResponseText = text;
+                                modelSucceeded = true;
+                                break;
+                            }
+                            throw new Error("Gemini API 回傳空內容。");
+                        } else {
+                            const errData = await response.json().catch(() => ({}));
+                            const errMsg = errData.error?.message || `HTTP 錯誤碼: ${response.status}`;
+                            lastError = new Error(errMsg);
+                            
+                            if (response.status === 404 || errMsg.includes("not found") || errMsg.includes("not supported") || errMsg.includes("not enabled")) {
+                                break; 
+                            }
+
+                            if (response.status === 400 || response.status === 403) {
+                                throw lastError;
+                            }
+                        }
+                    } catch (error) {
+                        lastError = error;
+                        if (error.message.includes("API key") || error.message.includes("not valid") || error.message.includes("403") || error.message.includes("400")) {
+                            throw error;
+                        }
+                        if (error.message.includes("not found") || error.message.includes("not supported") || error.message.includes("404")) {
+                            break;
+                        }
+                        if (i === maxRetries - 1) throw error;
+                    }
+                    
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+
+                if (modelSucceeded) {
+                    return modelResponseText;
+                }
+            }
+
+            throw lastError || new Error("嘗試了多個模型皆無法成功呼叫 API。");
+        }
+
+        // 2. 核心功能: 圖像轉化、紅色遮罩生成、二值化尋路地圖與距離變換建立
+        async function runAnalysis() {
+            if (!fig01_img) {
+                showToast("請先載入導片輪廓圖像 (fig01)！", true);
+                return;
+            }
+
+            const w_input = parseFloat(document.getElementById('maxWidthInput').value);
+            const h_input = parseFloat(document.getElementById('maxHeightInput').value);
+            const t_input = parseFloat(document.getElementById('thicknessInput').value);
+            const mat = document.getElementById('materialSelect').value;
+
+            if (isNaN(w_input) || w_input <= 0 || isNaN(h_input) || h_input <= 0) {
+                showToast("請輸入正確的導片垂直高與水平寬尺寸！", true);
+                return;
+            }
+
+            physicalDims = { w: w_input, h: h_input };
+
+            document.getElementById('welcomePanel').classList.add('hidden');
+            document.getElementById('resultsWorkspace').classList.add('hidden');
+            document.getElementById('loadingPanel').classList.remove('hidden');
+            document.getElementById('loadingStatus').innerText = "正在分析圖像非白色區域...";
+            document.getElementById('loadingSubstatus').innerText = "建立尋徑網格與距離變換地圖 (優化中軸流路)...";
+
+            setTimeout(() => {
+                try {
+                    processImageAndCalculateArea(w_input, h_input);
+                    requestAIGeometryAnalysis(w_input, h_input, t_input, mat);
+                } catch (err) {
+                    console.error(err);
+                    showToast("圖像分析過程中發生錯誤，請確認圖像尺寸。", true);
+                    document.getElementById('welcomePanel').classList.remove('hidden');
+                    document.getElementById('loadingPanel').classList.add('hidden');
+                }
+            }, 300);
+        }
+
+        function processImageAndCalculateArea(W_mm, H_mm) {
+            const canvas02 = document.getElementById('canvasFig02');
+            const ctx02 = canvas02.getContext('2d');
+
+            const maxDimension = 600;
+            let width = fig01_img.width;
+            let height = fig01_img.height;
+            if (width > maxDimension || height > maxDimension) {
+                const scale = Math.min(maxDimension / width, maxDimension / height);
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
+            }
+
+            canvas02.width = width;
+            canvas02.height = height;
+
+            ctx02.drawImage(fig01_img, 0, 0, width, height);
+            const imgData = ctx02.getImageData(0, 0, width, height);
+            const data = imgData.data;
+
+            let minX = width, maxX = 0, minY = height, maxY = 0;
+            let activePixelCount = 0;
+            const threshold = 240; 
+
+            // 生成紅色遮罩 (fig02 / part01) 與邊界包絡
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    const a = data[idx + 3];
+
+                    const isWhiteOrTrans = (r >= threshold && g >= threshold && b >= threshold) || (a < 15);
+
+                    if (!isWhiteOrTrans) {
+                        data[idx] = 239;     // 紅色 R
+                        data[idx + 1] = 68;  // G
+                        data[idx + 2] = 68;  // B
+                        data[idx + 3] = 255; // A
+
+                        activePixelCount++;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    } else {
+                        data[idx] = 255;
+                        data[idx + 1] = 255;
+                        data[idx + 2] = 255;
+                        data[idx + 3] = 255;
+                    }
+                }
+            }
+
+            ctx02.putImageData(imgData, 0, 0);
+
+            if (activePixelCount === 0) {
+                throw new Error("未檢測到有效的導片紅色或有色區域。");
+            }
+
+            boundingBox = {
+                minX: minX,
+                maxX: maxX,
+                minY: minY,
+                maxY: maxY,
+                w_px: maxX - minX + 1,
+                h_px: maxY - minY + 1
+            };
+
+            const mmPerPixelX = W_mm / boundingBox.w_px;
+            const mmPerPixelY = H_mm / boundingBox.h_px;
+            const pixelArea_mm2 = mmPerPixelX * mmPerPixelY;
+
+            partArea = (activePixelCount * pixelArea_mm2).toFixed(2);
+
+            document.getElementById('metricBounding').innerText = `${W_mm} mm × ${H_mm} mm`;
+            document.getElementById('metricArea').innerText = `${partArea} mm²`;
+            document.getElementById('pixelRatioText').innerText = `導體像素比率: ${((activePixelCount / (width * height)) * 100).toFixed(1)}%`;
+
+            // 建立二值化導體尋路網格 (0:空氣/孔洞, 1:導體材料)
+            gridCols = Math.ceil(width / gridScale);
+            gridRows = Math.ceil(height / gridScale);
+            conductiveGrid = [];
+
+            for (let r = 0; r < gridRows; r++) {
+                conductiveGrid[r] = [];
+                for (let c = 0; c < gridCols; c++) {
+                    let redCount = 0;
+                    let totalCount = 0;
+                    for (let sy = 0; sy < gridScale; sy++) {
+                        const py = r * gridScale + sy;
+                        if (py >= height) continue;
+                        for (let sx = 0; sx < gridScale; sx++) {
+                            const px = c * gridScale + sx;
+                            if (px >= width) continue;
+                            
+                            const idx = (py * width + px) * 4;
+                            if (data[idx] === 239 && data[idx + 1] === 68) {
+                                redCount++;
+                            }
+                            totalCount++;
+                        }
+                    }
+                    conductiveGrid[r][c] = (redCount / (totalCount || 1)) > 0.15 ? 1 : 0;
+                }
+            }
+
+            // 【二值化距離變換（Distance Transform）】
+            // 計算每個導體格到最近空氣邊界（0）的最短網格步數，用於中軸懲罰
+            distanceToEdge = [];
+            const queue = [];
+            
+            for (let r = 0; r < gridRows; r++) {
+                distanceToEdge[r] = [];
+                for (let c = 0; c < gridCols; c++) {
+                    if (conductiveGrid[r][c] === 0) {
+                        distanceToEdge[r][c] = 0;
+                        queue.push({ r, c });
+                    } else {
+                        distanceToEdge[r][c] = Infinity;
+                    }
+                }
+            }
+
+            // 多源 BFS 演算法計算距離
+            let head = 0;
+            while (head < queue.length) {
+                const curr = queue[head++];
+                const dirs = [
+                    { dr: -1, dc: 0 }, { dr: 1, dc: 0 },
+                    { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
+                ];
+                for (const d of dirs) {
+                    const nr = curr.r + d.dr;
+                    const nc = curr.c + d.dc;
+                    if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                        if (distanceToEdge[nr][nc] === Infinity) {
+                            distanceToEdge[nr][nc] = distanceToEdge[curr.r][curr.c] + 1;
+                            queue.push({ r: nr, c: nc });
+                        }
+                    }
+                }
+            }
+
+            setupFig08Editor();
+        }
+
+        async function requestAIGeometryAnalysis(w, h, t, mat) {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            const aiGeomText = document.getElementById('aiGeometryReport');
+
+            if (!apiKey) {
+                aiGeomText.innerHTML = `
+                    <span class="text-amber-400 font-bold">中軸物理尋路模型開啟：</span><br>
+                    此零件 <b>part01</b> 的極限尺寸為 ${w}mm × ${h}mm，導電面積 <b>${partArea} mm²</b>。
+                    已成功計算 A* 邊緣距離變換網格，尋路演算法將**強制流路行駛於導體截面正中間**。局部量測之有效截寬上限已設定為 **12mm**。
+                `;
+                showResultsPanel();
+                return;
+            }
+
+            try {
+                const canvas = document.getElementById('canvasFig02');
+                const base64Img = canvas.toDataURL('image/png').split(',')[1];
+                
+                const prompt = `
+                    這張圖是電池導體零件的一部分（紅色為導體，白色為空氣），命名為 part01。
+                    實體水平最寬尺寸為 ${w} mm，垂直最高尺寸為 ${h} mm，厚度為 ${t} mm。
+                    請簡要說明此開槽幾何形狀對大電流的引流特徵。請用繁體中文。
+                `;
+
+                const aiResponse = await callGeminiWithRetry(prompt, base64Img);
+                aiGeomText.innerHTML = `<span class="text-teal-400 font-bold">Gemini 智能特徵審查：</span><br>${aiResponse.trim()}`;
+            } catch (err) {
+                console.error("Gemini 第一階段分析失敗", err);
+                aiGeomText.innerHTML = `
+                    <span class="text-rose-400 font-bold">本地物理中軸尋路分析（AI 降級）：</span><br>
+                    導電零件 <b>part01</b> 面積為 <b>${partArea} mm²</b>。尋徑系統會自動尋找截面中軸。
+                `;
+            } finally {
+                showResultsPanel();
+            }
+        }
+
+        function showResultsPanel() {
+            document.getElementById('loadingPanel').classList.add('hidden');
+            document.getElementById('resultsWorkspace').classList.remove('hidden');
+            document.getElementById('resultsWorkspace').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 3. 端點標註互動編輯介面 (fig08)
+        const canvas08 = document.getElementById('canvasFig08');
+        const ctx08 = canvas08.getContext('2d');
+
+        function setupFig08Editor() {
+            const canvas02 = document.getElementById('canvasFig02');
+            canvas08.width = canvas02.width;
+            canvas08.height = canvas02.height;
+            redrawFig08();
+            updatePinUI();
+        }
+
+        function redrawFig08() {
+            const canvas02 = document.getElementById('canvasFig02');
+            ctx08.clearRect(0, 0, canvas08.width, canvas08.height);
+            
+            ctx08.globalAlpha = 0.55;
+            ctx08.drawImage(canvas02, 0, 0);
+            ctx08.globalAlpha = 1.0;
+
+            pins.forEach(pin => {
+                const isPos = pin.type === 'positive';
+                ctx08.beginPath();
+                ctx08.arc(pin.x, pin.y, 14, 0, 2 * Math.PI);
+                
+                ctx08.fillStyle = isPos ? 'rgba(239, 68, 68, 0.95)' : 'rgba(14, 165, 233, 0.95)';
+                ctx08.fill();
+                ctx08.lineWidth = 2.5;
+                ctx08.strokeStyle = '#ffffff';
+                ctx08.stroke();
+
+                ctx08.fillStyle = '#ffffff';
+                ctx08.font = 'bold 11px sans-serif';
+                ctx08.textAlign = 'center';
+                ctx08.textBaseline = 'middle';
+                const text = isPos ? `+${pin.index}` : `-${pin.index}`;
+                ctx08.fillText(text, pin.x, pin.y);
+            });
+        }
+
+        function handleCanvasClick(e) {
+            const rect = canvas08.getBoundingClientRect();
+            const clickX = ((e.clientX - rect.left) / rect.width) * canvas08.width;
+            const clickY = ((e.clientY - rect.top) / rect.height) * canvas08.height;
+
+            const mmX = ((clickX - boundingBox.minX) / boundingBox.w_px) * physicalDims.w;
+            const mmY = ((clickY - boundingBox.minY) / boundingBox.h_px) * physicalDims.h;
+
+            let index = 0;
+            if (currentPinType === 'positive') {
+                positiveCounter++;
+                index = positiveCounter;
+            } else {
+                negativeCounter++;
+                index = negativeCounter;
+            }
+
+            pins.push({
+                id: Date.now() + Math.random(),
+                type: currentPinType,
+                index: index,
+                x: clickX,
+                y: clickY,
+                x_mm: parseFloat(mmX.toFixed(2)),
+                y_mm: parseFloat(mmY.toFixed(2))
+            });
+
+            redrawFig08();
+            updatePinUI();
+        }
+
+        function setPinType(type) {
+            currentPinType = type;
+            const btnPos = document.getElementById('btnPinPositive');
+            const btnNeg = document.getElementById('btnPinNegative');
+
+            if (type === 'positive') {
+                btnPos.className = "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 bg-rose-500/20 text-rose-300 border border-rose-500/30";
+                btnNeg.className = "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 text-slate-400 hover:text-slate-200";
+            } else {
+                btnPos.className = "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 text-slate-400 hover:text-slate-200";
+                btnNeg.className = "px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1 bg-sky-500/20 text-sky-300 border border-sky-500/30";
+            }
+        }
+
+        function undoLastPin() {
+            if (pins.length === 0) return;
+            const removed = pins.pop();
+            if (removed.type === 'positive') {
+                positiveCounter = Math.max(0, positiveCounter - 1);
+            } else {
+                negativeCounter = Math.max(0, negativeCounter - 1);
+            }
+            redrawFig08();
+            updatePinUI();
+        }
+
+        function updatePinUI() {
+            const list = document.getElementById('pinList');
+            const badge = document.getElementById('pinCountBadge');
+            
+            badge.innerText = `${pins.length} 個端點`;
+
+            if (pins.length === 0) {
+                list.innerHTML = `<li class="text-slate-500 italic text-center py-6">尚未點擊標定任何端點</li>`;
+                return;
+            }
+
+            list.innerHTML = pins.map(pin => {
+                const isPos = pin.type === 'positive';
+                const badgeColor = isPos ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-sky-500/15 text-sky-400 border-sky-500/30';
+                return `
+                    <li class="flex items-center justify-between p-1.5 rounded border border-slate-900 bg-slate-950/40">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] border ${badgeColor} font-bold font-mono">
+                            ${isPos ? '+' : '-'}${pin.index}
+                        </span>
+                        <span class="font-mono text-[10px] text-slate-400">
+                            X: ${pin.x_mm} mm, Y: ${pin.y_mm} mm
+                        </span>
+                    </li>
+                `;
+            }).join('');
+        }
+
+        // 4. 【核心改進：基於邊緣距離懲罰的中軸線 A* 最短尋路演算法】
+        // 規則 1：必須走在導體材料上，不可隔空穿過
+        // 規則 2：規劃於截面中間（中軸線）
+        // 規則 3：若有多條路徑可走，優先尋找長度最短的走電路徑
+        function findConductivePathAStar(startPixel, endPixel) {
+            let startC = Math.floor(startPixel.x / gridScale);
+            let startR = Math.floor(startPixel.y / gridScale);
+            let endC = Math.floor(endPixel.x / gridScale);
+            let endR = Math.floor(endPixel.y / gridScale);
+
+            startC = Math.max(0, Math.min(gridCols - 1, startC));
+            startR = Math.max(0, Math.min(gridRows - 1, startR));
+            endC = Math.max(0, Math.min(gridCols - 1, endC));
+            endR = Math.max(0, Math.min(gridRows - 1, endR));
+
+            // Snap 落在邊界外的焊點至最近的銅排格
+            if (conductiveGrid[startR][startC] === 0) {
+                const nearest = findNearestConductiveGrid(startC, startR);
+                if (nearest) { startC = nearest.c; startR = nearest.r; }
+            }
+            if (conductiveGrid[endR][endC] === 0) {
+                const nearest = findNearestConductiveGrid(endC, endR);
+                if (nearest) { endC = nearest.c; endR = nearest.r; }
+            }
+
+            const openSet = [];
+            const closedSet = new Set();
+
+            const startNode = {
+                c: startC,
+                r: startR,
+                g: 0,
+                h: Math.hypot(startC - endC, startR - endR),
+                parent: null
+            };
+            startNode.f = startNode.g + startNode.h;
+            openSet.push(startNode);
+
+            // 尋找網格中最大的邊界距離值
+            let maxDistValue = 1;
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    const dist = distanceToEdge[r][c];
+                    if (dist !== Infinity && dist > maxDistValue) {
+                        maxDistValue = dist;
+                    }
+                }
+            }
+
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => a.f - b.f);
+                const current = openSet.shift();
+
+                if (current.c === endC && current.r === endR) {
+                    return reconstructPath(current);
+                }
+
+                closedSet.add(`${current.c},${current.r}`);
+
+                const neighbors = [
+                    { dc: 0, dr: -1, cost: 1 },
+                    { dc: 0, dr: 1, cost: 1 },
+                    { dc: -1, dr: 0, cost: 1 },
+                    { dc: 1, dr: 0, cost: 1 },
+                    { dc: -1, dr: -1, cost: 1.414 },
+                    { dc: 1, dr: -1, cost: 1.414 },
+                    { dc: -1, dr: 1, cost: 1.414 },
+                    { dc: 1, dr: 1, cost: 1.414 }
+                ];
+
+                for (const offset of neighbors) {
+                    const nc = current.c + offset.dc;
+                    const nr = current.r + offset.dr;
+
+                    if (nc < 0 || nc >= gridCols || nr < 0 || nr >= gridRows) continue;
+                    if (conductiveGrid[nr][nc] === 0) continue; // 規則 1：必須完全走在銅排材料上
+                    if (closedSet.has(`${nc},${nr}`)) continue;
+
+                    // 【核心中軸對齊 + 最短路徑平衡機制】
+                    // 點到邊界的距離越大（靠近中軸），乘數越低。最靠近邊緣處的步進代價會增加
+                    // 使用比率乘數，保證 A* 在同一分支內極力靠攏中軸，但若存在更短分支，仍能遵守最短尋路（規則 3）
+                    const distVal = distanceToEdge[nr][nc];
+                    const proximityRatio = 1.0 - (distVal / maxDistValue); // 範圍 0.0 (中央) ~ 1.0 (邊緣)
+                    const centerSeekingMultiplier = 1.0 + 1.5 * proximityRatio; // 步進代價在 1.0 ~ 2.5 之間
+
+                    const gScore = current.g + (offset.cost * centerSeekingMultiplier);
+                    const hScore = Math.hypot(nc - endC, nr - endR);
+                    const fScore = gScore + hScore;
+
+                    const existing = openSet.find(n => n.c === nc && n.r === nr);
+                    if (!existing) {
+                        openSet.push({
+                            c: nc, r: nr, g: gScore, h: hScore, f: fScore, parent: current
+                        });
+                    } else if (gScore < existing.g) {
+                        existing.g = gScore;
+                        existing.f = fScore;
+                        existing.parent = current;
+                    }
+                }
+            }
+
+            // 備援：若物理斷裂或無通路，回傳直線
+            return [
+                { x: startPixel.x, y: startPixel.y },
+                { x: endPixel.x, y: endPixel.y }
+            ];
+        }
+
+        function findNearestConductiveGrid(c, r) {
+            let maxRadius = Math.max(gridCols, gridRows);
+            for (let dist = 1; dist < maxRadius; dist++) {
+                for (let dc = -dist; dc <= dist; dc++) {
+                    for (let dr = -dist; dr <= dist; dr++) {
+                        if (Math.abs(dc) !== dist && Math.abs(dr) !== dist) continue;
+                        const nc = c + dc;
+                        const nr = r + dr;
+                        if (nc >= 0 && nc < gridCols && nr >= 0 && nr < gridRows) {
+                            if (conductiveGrid[nr][nc] === 1) {
+                                return { c: nc, r: nr };
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function reconstructPath(node) {
+            const path = [];
+            let curr = node;
+            while (curr !== null) {
+                path.unshift({
+                    x: curr.c * gridScale + gridScale / 2,
+                    y: curr.r * gridScale + gridScale / 2
+                });
+                curr = curr.parent;
+            }
+            return path;
+        }
+
+        // 5. 【核心改進：有效面寬不大於 12mm 的變截面阻抗微積分估算】
+        // 規則 4：考量路徑上走電寬度變化對阻抗的影響（斷面變寬度積分）
+        function analyzePathImpedanceAdvanced(pixelPath, rho, thickness_mm) {
+            const canvasFig02 = document.getElementById('canvasFig02');
+            const ctx02 = canvasFig02.getContext('2d');
+            const imgData = ctx02.getImageData(0, 0, canvasFig02.width, canvasFig02.height);
+
+            const mmPerPixelX = physicalDims.w / boundingBox.w_px;
+            const mmPerPixelY = physicalDims.h / boundingBox.h_px;
+            const mmPerPixelAvg = (mmPerPixelX + mmPerPixelY) / 2;
+
+            let totalResistance = 0; // Ohm
+            let totalLength_mm = 0;
+            let minWidth_mm = Infinity;
+            let actualWidthSum_mm = 0;
+            let effectiveWidthSum_mm = 0;
+            let segmentCount = 0;
+
+            for (let i = 0; i < pixelPath.length - 1; i++) {
+                const p1 = pixelPath[i];
+                const p2 = pixelPath[i + 1];
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const segLen_pixel = Math.hypot(dx, dy);
+                if (segLen_pixel === 0) continue;
+
+                const segLen_mm = segLen_pixel * mmPerPixelAvg;
+                totalLength_mm += segLen_mm;
+
+                // 本段法向量（用於向兩側射線量測幾何截寬）
+                const nx = -dy / segLen_pixel;
+                const ny = dx / segLen_pixel;
+
+                const cx = (p1.x + p2.x) / 2;
+                const cy = (p1.y + p2.y) / 2;
+
+                const w_pixel = measureConductiveWidthAtPoint(cx, cy, nx, ny, imgData);
+                const w_actual_mm = Math.max(1.0, w_pixel * mmPerPixelAvg); 
+
+                // 【規則 2 限制：有效導電截面面寬不得超過 12mm】
+                const w_effective_mm = Math.min(w_actual_mm, 12.0);
+
+                if (w_effective_mm < minWidth_mm) minWidth_mm = w_effective_mm;
+                actualWidthSum_mm += w_actual_mm;
+                effectiveWidthSum_mm += w_effective_mm;
+                segmentCount++;
+
+                // 微積分分段歐姆累加: R = rho * (L_seg / (W_eff * T)) 
+                const r_seg_ohm = (rho * segLen_mm * 1000) / (w_effective_mm * thickness_mm);
+                totalResistance += r_seg_ohm;
+            }
+
+            const avgActualWidth_mm = segmentCount > 0 ? (actualWidthSum_mm / segmentCount) : 10;
+            const avgEffectiveWidth_mm = segmentCount > 0 ? (effectiveWidthSum_mm / segmentCount) : 10;
+
+            return {
+                length_mm: parseFloat(totalLength_mm.toFixed(2)),
+                minWidth_mm: parseFloat(minWidth_mm.toFixed(2)),
+                avgActualWidth_mm: parseFloat(avgActualWidth_mm.toFixed(2)),
+                avgEffectiveWidth_mm: parseFloat(avgEffectiveWidth_mm.toFixed(2)),
+                resistance_mohm: parseFloat((totalResistance * 1000).toFixed(4))
+            };
+        }
+
+        function measureConductiveWidthAtPoint(cx, cy, nx, ny, imgData) {
+            const width = imgData.width;
+            const height = imgData.height;
+            const data = imgData.data;
+
+            let stepLeft = 0;
+            let stepRight = 0;
+
+            while (true) {
+                const px = Math.round(cx + nx * (-stepLeft));
+                const py = Math.round(cy + ny * (-stepLeft));
+                if (px < 0 || px >= width || py < 0 || py >= height) break;
+                
+                const idx = (py * width + px) * 4;
+                if (data[idx] === 239 && data[idx + 1] === 68) {
+                    stepLeft++;
+                } else {
+                    break;
+                }
+                if (stepLeft > 250) break;
+            }
+
+            while (true) {
+                const px = Math.round(cx + nx * stepRight);
+                const py = Math.round(cy + ny * stepRight);
+                if (px < 0 || px >= width || py < 0 || py >= height) break;
+                
+                const idx = (py * width + px) * 4;
+                if (data[idx] === 239 && data[idx + 1] === 68) {
+                    stepRight++;
+                } else {
+                    break;
+                }
+                if (stepRight > 250) break;
+            }
+
+            return stepLeft + stepRight;
+        }
+
+        // 6. 標定完成，觸發阻抗計算
+        async function completeLabeling() {
+            const posPins = pins.filter(p => p.type === 'positive').sort((a,b)=>a.index - b.index);
+            const negPins = pins.filter(p => p.type === 'negative').sort((a,b)=>a.index - b.index);
+
+            if (posPins.length === 0 || negPins.length === 0) {
+                showToast("阻抗走電分析需要至少 1 個正極與 1 個負極焊點！", true);
+                return;
+            }
+
+            const pathCount = Math.min(posPins.length, negPins.length);
+            if (pathCount < posPins.length || pathCount < negPins.length) {
+                showToast(`正負焊接極數不對稱，已自動按流水對齊前 ${pathCount} 組進行中軸流場積分。`);
+            }
+
+            document.getElementById('impedanceReportSection').classList.remove('hidden');
+            
+            const paths = [];
+            const rho = getResistivity();
+            const t_mm = parseFloat(document.getElementById('thicknessInput').value);
+
+            // 逐一進行中軸尋路與切片積分
+            for (let i = 0; i < pathCount; i++) {
+                const pos = posPins[i];
+                const neg = negPins[i];
+
+                // 中軸線尋徑 (規則 1, 2, 3)
+                const pixelPath = findConductivePathAStar(pos, neg);
+
+                // 物理阻抗微積分，內含有效截面 W <= 12mm 約束 (規則 4)
+                const physicsResult = analyzePathImpedanceAdvanced(pixelPath, rho, t_mm);
+
+                paths.push({
+                    index: i + 1,
+                    pos: pos,
+                    neg: neg,
+                    pixelPath: pixelPath,
+                    metrics: physicsResult
+                });
+            }
+
+            // 繪製多折線物理中軸霓虹走電路徑與包絡面
+            generateAdvancedPathVisuals(paths);
+
+            // 呈報表格與觸發 AI 優化建議
+            await runFinalImpedanceReporting(paths);
+            
+            document.getElementById('impedanceReportSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 繪製精確走在導片中軸線上的霓虹流路與 12mm 截電包絡帶 (視覺化流道)
+        function generateAdvancedPathVisuals(paths) {
+            const container = document.getElementById('pathVisualizerContainer');
+            container.innerHTML = '';
+
+            const canvas02 = document.getElementById('canvasFig02');
+            const mmPerPixelX = physicalDims.w / boundingBox.w_px;
+            const mmPerPixelY = physicalDims.h / boundingBox.h_px;
+            const mmPerPixelAvg = (mmPerPixelX + mmPerPixelY) / 2;
+
+            // 12mm 對應在畫布上的像素半寬度
+            const limitHalfWidthPx = (12.0 / mmPerPixelAvg) / 2;
+
+            paths.forEach(p => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-950/80 rounded-xl p-3 border border-slate-850 flex flex-col items-center";
+                
+                const header = document.createElement('div');
+                header.className = "w-full flex justify-between text-[11px] mb-2 font-bold";
+                header.innerHTML = `
+                    <span class="text-teal-400">中軸路徑 Path ${p.index}</span>
+                    <span class="text-slate-400 font-mono">+${p.pos.index} ➔ -${p.neg.index}</span>
+                `;
+                card.appendChild(header);
+
+                const canvas = document.createElement('canvas');
+                canvas.className = "w-full aspect-[4/3] bg-slate-950 rounded border border-slate-900 object-contain";
+                canvas.width = canvas02.width;
+                canvas.height = canvas02.height;
+                card.appendChild(canvas);
+
+                container.appendChild(card);
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 1. 極淡的零件背景
+                ctx.globalAlpha = 0.15;
+                ctx.drawImage(canvas02, 0, 0);
+                ctx.globalAlpha = 1.0;
+
+                // 2. 繪製 12mm 的有效電導包絡帶 (用作視覺說明，規則 2)
+                if (p.pixelPath.length > 1) {
+                    ctx.save();
+                    ctx.beginPath();
+                    // 第一側包絡邊界
+                    for (let j = 0; j < p.pixelPath.length - 1; j++) {
+                        const pt = p.pixelPath[j];
+                        const nextPt = p.pixelPath[j + 1];
+                        const dx = nextPt.x - pt.x;
+                        const dy = nextPt.y - pt.y;
+                        const len = Math.hypot(dx, dy);
+                        const nx = -dy / (len || 1);
+                        const ny = dx / (len || 1);
+
+                        const bx = pt.x + nx * limitHalfWidthPx;
+                        const by = pt.y + ny * limitHalfWidthPx;
+                        if (j === 0) ctx.moveTo(bx, by);
+                        else ctx.lineTo(bx, by);
+                    }
+                    // 第二側包絡邊界 (回溯)
+                    for (let j = p.pixelPath.length - 2; j >= 0; j--) {
+                        const pt = p.pixelPath[j];
+                        const nextPt = p.pixelPath[j + 1];
+                        const dx = nextPt.x - pt.x;
+                        const dy = nextPt.y - pt.y;
+                        const len = Math.hypot(dx, dy);
+                        const nx = -dy / (len || 1);
+                        const ny = dx / (len || 1);
+
+                        const bx = pt.x - nx * limitHalfWidthPx;
+                        const by = pt.y - ny * limitHalfWidthPx;
+                        ctx.lineTo(bx, by);
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(34, 211, 238, 0.08)'; // 淡青色包絡
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(34, 211, 238, 0.2)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // 3. 順著 A* 尋路折線繪製正中軸流路
+                if (p.pixelPath.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(p.pixelPath[0].x, p.pixelPath[0].y);
+                    for (let j = 1; j < p.pixelPath.length; j++) {
+                        ctx.lineTo(p.pixelPath[j].x, p.pixelPath[j].y);
+                    }
+
+                    // 霓虹中軸線
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#22d3ee'; // 發光青色
+                    ctx.shadowColor = '#0891b2';
+                    ctx.shadowBlur = 8;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0; 
+                }
+
+                // 4. 繪製接點端子
+                ctx.beginPath();
+                ctx.arc(p.pos.x, p.pos.y, 8, 0, 2*Math.PI);
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(p.neg.x, p.neg.y, 8, 0, 2*Math.PI);
+                ctx.fillStyle = '#0ea5e9';
+                ctx.fill();
+                ctx.stroke();
+            });
+        }
+
+        // 呈報阻抗表格與 AI 建議
+        async function runFinalImpedanceReporting(paths) {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            const rho = getResistivity();
+            const t_mm = parseFloat(document.getElementById('thicknessInput').value);
+            const mat = document.getElementById('materialSelect').value;
+
+            const tbody = document.getElementById('impedanceTableBody');
+            tbody.innerHTML = '';
+
+            let invResistanceSum = 0;
+
+            paths.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-900/40 transition-colors";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-slate-300">Path ${p.index} <span class="text-[10px] text-slate-500 block font-normal">正極 ➔ 負極</span></td>
+                    <td class="p-3 font-mono">${p.metrics.length_mm} mm</td>
+                    <td class="p-3 font-mono text-slate-400">${p.metrics.avgActualWidth_mm} mm</td>
+                    <td class="p-3 font-mono text-teal-400 font-bold">${p.metrics.avgEffectiveWidth_mm} mm</td>
+                    <td class="p-3 text-right font-mono font-bold text-emerald-400">${p.metrics.resistance_mohm.toFixed(4)} m$\Omega$</td>
+                `;
+                tbody.appendChild(tr);
+
+                if (p.metrics.resistance_mohm > 0) {
+                    invResistanceSum += (1 / p.metrics.resistance_mohm);
+                }
+            });
+
+            const totalEquivalentImpedance = invResistanceSum > 0 ? (1 / invResistanceSum) : 0;
+            document.getElementById('totalImpedanceValue').innerText = totalEquivalentImpedance.toFixed(5);
+
+            if (typeof MathJax !== 'undefined') {
+                MathJax.typesetPromise();
+            }
+
+            if (!apiKey) {
+                document.getElementById('engineBadge').innerText = "A* 中軸尋路與 12mm 截寬限制模型";
+                document.getElementById('aiOptimizationCard').classList.add('hidden');
+                return;
+            }
+
+            try {
+                document.getElementById('engineBadge').innerText = "Gemini AI 智能優化審核...";
+                document.getElementById('aiOptimizationCard').classList.remove('hidden');
+                document.getElementById('aiImpedanceAdvise').innerText = "正在將多折線走電幾何瓶頸數據上傳至 Gemini 進行多極流場熱集中診斷...";
+
+                const base64Fig08 = canvas08.toDataURL('image/png').split(',')[1];
+
+                const prompt = `
+                    你是一位專業的動力電池 Pack 包、銅排導片設計專家。
+                    標註了 ${paths.length} 組正負焊接點。我們已使用 A* 演算法建立了不穿透空氣、完全走在材料正中軸線上的最合理走流路徑，並引進了有效截面 W <= 12mm 的上限約束。
+                    數據如下：
+                    ${paths.map(p => `- 路徑 ${p.index}: 長度 ${p.metrics.length_mm} mm, 實測均寬 ${p.metrics.avgActualWidth_mm} mm, 有效截寬(已被限制在12mm以內) ${p.metrics.avgEffectiveWidth_mm} mm, 阻抗 ${p.metrics.resistance_mohm} mOhm。`).join('\n')}
+                    
+                    複合導片等效並聯總阻抗為 ${totalEquivalentImpedance.toFixed(5)} mOhm。
+                    請針對此幾何尋路結果與寬度飽和特徵，提供極其精簡（100 字內）的繁體中文分析，並對導片排布提出一條具體建議。
+                `;
+
+                const aiResponse = await callGeminiWithRetry(prompt, base64Fig08);
+                document.getElementById('aiImpedanceAdvise').innerHTML = `
+                    <span class="text-teal-400 font-bold">Gemini 電極中軸流道與 W<=12mm 飽和優化：</span><br>
+                    ${aiResponse.trim()}
+                `;
+                document.getElementById('engineBadge').innerText = "A* 中軸尋路 + Gemini AI";
+
+            } catch (err) {
+                console.error("Gemini 幾何瓶頸診斷失敗:", err);
+                document.getElementById('aiImpedanceAdvise').innerHTML = `
+                    <span class="text-rose-400 font-bold">Gemini AI 智能優化診斷忙碌中：</span><br>
+                    <span class="text-rose-300 text-[11px] block mb-2 font-mono">連線錯誤: ${err.message}</span>
+                    已啟用本機 A* 切片物理模型。本並聯總電阻為 ${totalEquivalentImpedance.toFixed(5)} mΩ。
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
